@@ -16,48 +16,49 @@ import {
   Brain, 
   Clock, 
   CheckCircle,
-  Sparkles
+  Sparkles,
+  Upload
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface BotFormData {
   projectName: string;
-  whatsappApiKey: string;
+  projectDescription: string;
+  whatsappAccessToken: string;
+  phoneNumberId: string;
   phoneNumber: string;
-  verifiedSenderId: string;
   aiProvider: string;
-  welcomeMessage: string;
+  aiModel: string;
+  aiApiKey: string;
+  uploadedFiles: File[];
   useCases: string[];
-  template: string;
   workingHoursStart: string;
   workingHoursEnd: string;
-  fallbackMessage: string;
 }
 
 const initialFormData: BotFormData = {
   projectName: '',
-  whatsappApiKey: '',
+  projectDescription: '',
+  whatsappAccessToken: '',
+  phoneNumberId: '',
   phoneNumber: '',
-  verifiedSenderId: '',
   aiProvider: '',
-  welcomeMessage: '',
+  aiModel: '',
+  aiApiKey: '',
+  uploadedFiles: [],
   useCases: [],
-  template: '',
   workingHoursStart: '09:00',
-  workingHoursEnd: '17:00',
-  fallbackMessage: ''
+  workingHoursEnd: '17:00'
 };
 
 const steps = [
-  { id: 1, title: 'Project Name', description: 'Give your bot a name' },
+  { id: 1, title: 'Project Details', description: 'Name and describe your bot' },
   { id: 2, title: 'WhatsApp Setup', description: 'Configure API credentials' },
   { id: 3, title: 'AI Provider', description: 'Choose your AI engine' },
-  { id: 4, title: 'Welcome Message', description: 'Set the greeting message' },
+  { id: 4, title: 'Upload Data', description: 'Upload your training data' },
   { id: 5, title: 'Use Cases', description: 'Define bot purpose' },
-  { id: 6, title: 'Template', description: 'Choose a template' },
-  { id: 7, title: 'Working Hours', description: 'Set availability' },
-  { id: 8, title: 'Fallback Message', description: 'Default responses' },
-  { id: 9, title: 'Review & Launch', description: 'Finalize your bot' }
+  { id: 6, title: 'Working Hours', description: 'Set availability' },
+  { id: 7, title: 'Review & Launch', description: 'Finalize your bot' }
 ];
 
 const templates = [
@@ -121,21 +122,17 @@ export default function CreateBot() {
   const canProceedToNext = () => {
     switch (currentStep) {
       case 1:
-        return formData.projectName.trim() !== '';
+        return formData.projectName.trim() !== '' && formData.projectDescription.trim() !== '';
       case 2:
-        return formData.whatsappApiKey && formData.phoneNumber && formData.verifiedSenderId;
+        return formData.whatsappAccessToken && formData.phoneNumberId && formData.phoneNumber;
       case 3:
-        return formData.aiProvider !== '';
+        return formData.aiProvider !== '' && formData.aiModel !== '' && formData.aiApiKey !== '';
       case 4:
-        return formData.welcomeMessage.trim() !== '';
+        return formData.uploadedFiles.length > 0;
       case 5:
         return formData.useCases.length > 0;
       case 6:
-        return formData.template !== '';
-      case 7:
         return true; // Working hours have defaults
-      case 8:
-        return formData.fallbackMessage.trim() !== '';
       default:
         return true;
     }
@@ -183,17 +180,29 @@ export default function CreateBot() {
           <div className="space-y-4">
             <div className="text-center mb-6">
               <Bot className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-foreground">Name Your Chatbot</h2>
-              <p className="text-muted-foreground">Choose a descriptive name for your AI assistant</p>
+              <h2 className="text-2xl font-bold text-foreground">Project Details</h2>
+              <p className="text-muted-foreground">Give your chatbot a name and description</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="projectName">Project Name</Label>
-              <Input
-                id="projectName"
-                placeholder="e.g., Customer Support Bot"
-                value={formData.projectName}
-                onChange={(e) => updateFormData('projectName', e.target.value)}
-              />
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="projectName">Project Name</Label>
+                <Input
+                  id="projectName"
+                  placeholder="e.g., Customer Support Bot"
+                  value={formData.projectName}
+                  onChange={(e) => updateFormData('projectName', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="projectDescription">Project Description</Label>
+                <Textarea
+                  id="projectDescription"
+                  placeholder="Describe what your bot will do and how it will help users"
+                  value={formData.projectDescription}
+                  onChange={(e) => updateFormData('projectDescription', e.target.value)}
+                  rows={4}
+                />
+              </div>
             </div>
           </div>
         );
@@ -208,13 +217,22 @@ export default function CreateBot() {
             </div>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="apiKey">WhatsApp API Key</Label>
+                <Label htmlFor="accessToken">WhatsApp Access Token</Label>
                 <Input
-                  id="apiKey"
+                  id="accessToken"
                   type="password"
-                  placeholder="Enter your WhatsApp Business API key"
-                  value={formData.whatsappApiKey}
-                  onChange={(e) => updateFormData('whatsappApiKey', e.target.value)}
+                  placeholder="Enter your WhatsApp Access Token"
+                  value={formData.whatsappAccessToken}
+                  onChange={(e) => updateFormData('whatsappAccessToken', e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phoneNumberId">Phone Number ID</Label>
+                <Input
+                  id="phoneNumberId"
+                  placeholder="Enter your Phone Number ID"
+                  value={formData.phoneNumberId}
+                  onChange={(e) => updateFormData('phoneNumberId', e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -224,15 +242,6 @@ export default function CreateBot() {
                   placeholder="+1234567890"
                   value={formData.phoneNumber}
                   onChange={(e) => updateFormData('phoneNumber', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="senderId">Verified Sender ID</Label>
-                <Input
-                  id="senderId"
-                  placeholder="Your business name"
-                  value={formData.verifiedSenderId}
-                  onChange={(e) => updateFormData('verifiedSenderId', e.target.value)}
                 />
               </div>
             </div>
@@ -245,20 +254,65 @@ export default function CreateBot() {
             <div className="text-center mb-6">
               <Brain className="h-12 w-12 text-primary mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-foreground">AI Provider</h2>
-              <p className="text-muted-foreground">Choose your preferred AI engine</p>
+              <p className="text-muted-foreground">Configure your AI engine</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="aiProvider">AI Provider</Label>
-              <Select onValueChange={(value) => updateFormData('aiProvider', value)}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select AI provider" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="openai">OpenAI (GPT-4)</SelectItem>
-                  <SelectItem value="gemini">Google Gemini</SelectItem>
-                  <SelectItem value="custom">Custom API</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="aiProvider">AI Provider</Label>
+                <Select onValueChange={(value) => updateFormData('aiProvider', value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select AI provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="openai">OpenAI</SelectItem>
+                    <SelectItem value="gemini">Google Gemini</SelectItem>
+                    <SelectItem value="anthropic">Anthropic</SelectItem>
+                    <SelectItem value="custom">Custom API</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {formData.aiProvider && (
+                <div className="space-y-2">
+                  <Label htmlFor="aiModel">AI Model</Label>
+                  <Select onValueChange={(value) => updateFormData('aiModel', value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select AI model" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {formData.aiProvider === 'openai' && (
+                        <>
+                          <SelectItem value="gpt-4">GPT-4</SelectItem>
+                          <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
+                        </>
+                      )}
+                      {formData.aiProvider === 'gemini' && (
+                        <>
+                          <SelectItem value="gemini-pro">Gemini Pro</SelectItem>
+                          <SelectItem value="gemini-pro-vision">Gemini Pro Vision</SelectItem>
+                        </>
+                      )}
+                      {formData.aiProvider === 'anthropic' && (
+                        <>
+                          <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
+                          <SelectItem value="claude-3-sonnet">Claude 3 Sonnet</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {formData.aiProvider && (
+                <div className="space-y-2">
+                  <Label htmlFor="aiApiKey">API Key</Label>
+                  <Input
+                    id="aiApiKey"
+                    type="password"
+                    placeholder="Enter your API key"
+                    value={formData.aiApiKey}
+                    onChange={(e) => updateFormData('aiApiKey', e.target.value)}
+                  />
+                </div>
+              )}
             </div>
           </div>
         );
@@ -267,19 +321,59 @@ export default function CreateBot() {
         return (
           <div className="space-y-4">
             <div className="text-center mb-6">
-              <MessageSquare className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-foreground">Welcome Message</h2>
-              <p className="text-muted-foreground">Set the first message users will see</p>
+              <Upload className="h-12 w-12 text-primary mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-foreground">Upload Your Data</h2>
+              <p className="text-muted-foreground">Upload documents to train your AI chatbot</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="welcomeMessage">Welcome Message</Label>
-              <Textarea
-                id="welcomeMessage"
-                placeholder="Hi! I'm your AI assistant. How can I help you today?"
-                value={formData.welcomeMessage}
-                onChange={(e) => updateFormData('welcomeMessage', e.target.value)}
-                rows={4}
-              />
+            <div className="space-y-4">
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-8 text-center">
+                <Upload className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <div className="space-y-2">
+                  <p className="text-lg font-medium">Drop files here or click to upload</p>
+                  <p className="text-sm text-muted-foreground">Supported formats: PDF, DOC, DOCX, TXT</p>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.txt"
+                    className="hidden"
+                    id="file-upload"
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      updateFormData('uploadedFiles', [...formData.uploadedFiles, ...files]);
+                    }}
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={() => document.getElementById('file-upload')?.click()}
+                    className="mt-4"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Choose Files
+                  </Button>
+                </div>
+              </div>
+              {formData.uploadedFiles.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Uploaded Files ({formData.uploadedFiles.length})</Label>
+                  <div className="space-y-2 max-h-32 overflow-y-auto">
+                    {formData.uploadedFiles.map((file, index) => (
+                      <div key={index} className="flex items-center justify-between p-2 bg-muted rounded">
+                        <span className="text-sm">{file.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            const newFiles = formData.uploadedFiles.filter((_, i) => i !== index);
+                            updateFormData('uploadedFiles', newFiles);
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );
@@ -313,38 +407,6 @@ export default function CreateBot() {
         return (
           <div className="space-y-4">
             <div className="text-center mb-6">
-              <Bot className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-foreground">Choose Template</h2>
-              <p className="text-muted-foreground">Select a pre-built template to get started faster</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {templates.map((template) => (
-                <Card 
-                  key={template.id}
-                  className={`cursor-pointer transition-all hover:shadow-custom-lg ${
-                    formData.template === template.id ? 'ring-2 ring-primary bg-primary/5' : ''
-                  }`}
-                  onClick={() => updateFormData('template', template.id)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-center space-x-3">
-                      <span className="text-2xl">{template.icon}</span>
-                      <div>
-                        <h3 className="font-medium text-card-foreground">{template.name}</h3>
-                        <p className="text-sm text-muted-foreground">{template.description}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        );
-
-      case 7:
-        return (
-          <div className="space-y-4">
-            <div className="text-center mb-6">
               <Clock className="h-12 w-12 text-primary mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-foreground">Working Hours</h2>
               <p className="text-muted-foreground">When should your bot be active?</p>
@@ -372,28 +434,7 @@ export default function CreateBot() {
           </div>
         );
 
-      case 8:
-        return (
-          <div className="space-y-4">
-            <div className="text-center mb-6">
-              <MessageSquare className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-foreground">Fallback Message</h2>
-              <p className="text-muted-foreground">What should the bot say when it doesn't understand?</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="fallbackMessage">Fallback Message</Label>
-              <Textarea
-                id="fallbackMessage"
-                placeholder="I'm sorry, I didn't understand that. Could you please rephrase your question?"
-                value={formData.fallbackMessage}
-                onChange={(e) => updateFormData('fallbackMessage', e.target.value)}
-                rows={4}
-              />
-            </div>
-          </div>
-        );
-
-      case 9:
+      case 7:
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -412,7 +453,7 @@ export default function CreateBot() {
                       <strong>Project Name:</strong> {formData.projectName}
                     </div>
                     <div>
-                      <strong>AI Provider:</strong> {formData.aiProvider}
+                      <strong>AI Provider:</strong> {formData.aiProvider} ({formData.aiModel})
                     </div>
                     <div>
                       <strong>Phone Number:</strong> {formData.phoneNumber}
@@ -421,10 +462,13 @@ export default function CreateBot() {
                       <strong>Working Hours:</strong> {formData.workingHoursStart} - {formData.workingHoursEnd}
                     </div>
                     <div className="md:col-span-2">
+                      <strong>Description:</strong> {formData.projectDescription}
+                    </div>
+                    <div className="md:col-span-2">
                       <strong>Use Cases:</strong> {formData.useCases.join(', ')}
                     </div>
                     <div className="md:col-span-2">
-                      <strong>Welcome Message:</strong> {formData.welcomeMessage}
+                      <strong>Uploaded Files:</strong> {formData.uploadedFiles.length} file(s)
                     </div>
                   </div>
                 </CardContent>
