@@ -2,39 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
-*/
+/* WhatsApp AI Chatbot Builder Design System */
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 250 100% 99%;
+    --foreground: 224 15% 15%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 224 15% 15%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    --popover-foreground: 224 15% 15%;
 
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 262 52% 47%;
+    --primary-foreground: 0 0% 98%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 247 35% 95%;
+    --secondary-foreground: 224 15% 25%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    --muted: 247 35% 95%;
+    --muted-foreground: 215 20% 55%;
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 259 100% 96%;
+    --accent-foreground: 262 52% 47%;
 
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --border: 247 25% 90%;
+    --input: 247 25% 90%;
+    --ring: 262 52% 47%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 98%;
+
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 98%;
+
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(262 52% 47%), hsl(230 80% 60%));
+    --gradient-secondary: linear-gradient(135deg, hsl(247 35% 95%), hsl(259 100% 96%));
+    --gradient-hero: linear-gradient(135deg, hsl(262 52% 47%) 0%, hsl(230 80% 60%) 50%, hsl(200 95% 65%) 100%);
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(262 52% 47% / 0.05);
+    --shadow-md: 0 4px 6px -1px hsl(262 52% 47% / 0.1), 0 2px 4px -1px hsl(262 52% 47% / 0.06);
+    --shadow-lg: 0 10px 15px -3px hsl(262 52% 47% / 0.1), 0 4px 6px -2px hsl(262 52% 47% / 0.05);
+    --shadow-glow: 0 0 20px hsl(262 52% 47% / 0.3);
 
     --radius: 0.5rem;
 
@@ -56,33 +71,51 @@ All colors MUST be HSL.
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    --background: 224 15% 8%;
+    --foreground: 250 100% 95%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    --card: 224 15% 10%;
+    --card-foreground: 250 100% 95%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 224 15% 10%;
+    --popover-foreground: 250 100% 95%;
 
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    --primary: 262 52% 67%;
+    --primary-foreground: 224 15% 8%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 247 15% 15%;
+    --secondary-foreground: 250 100% 95%;
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    --muted: 247 15% 15%;
+    --muted-foreground: 215 20% 65%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 259 50% 20%;
+    --accent-foreground: 262 52% 67%;
 
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 247 15% 18%;
+    --input: 247 15% 18%;
+    --ring: 262 52% 67%;
+
+    --success: 142 76% 56%;
+    --success-foreground: 224 15% 8%;
+
+    --warning: 38 92% 70%;
+    --warning-foreground: 224 15% 8%;
+
+    /* Dark mode gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(262 52% 67%), hsl(230 80% 80%));
+    --gradient-secondary: linear-gradient(135deg, hsl(247 15% 15%), hsl(259 50% 20%));
+    --gradient-hero: linear-gradient(135deg, hsl(262 52% 67%) 0%, hsl(230 80% 80%) 50%, hsl(200 95% 85%) 100%);
+    
+    /* Dark mode shadows */
+    --shadow-sm: 0 1px 2px 0 hsl(262 52% 67% / 0.15);
+    --shadow-md: 0 4px 6px -1px hsl(262 52% 67% / 0.2), 0 2px 4px -1px hsl(262 52% 67% / 0.16);
+    --shadow-lg: 0 10px 15px -3px hsl(262 52% 67% / 0.2), 0 4px 6px -2px hsl(262 52% 67% / 0.15);
+    --shadow-glow: 0 0 20px hsl(262 52% 67% / 0.5);
+
     --sidebar-background: 240 5.9% 10%;
     --sidebar-foreground: 240 4.8% 95.9%;
     --sidebar-primary: 224.3 76.3% 48%;
