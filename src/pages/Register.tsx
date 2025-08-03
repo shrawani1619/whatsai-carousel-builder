@@ -31,19 +31,28 @@ export default function Register() {
       return;
     }
 
+    if (password.length < 6) {
+      toast({
+        title: "Password too short",
+        description: "Password must be at least 6 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     
     try {
       await register(email, password, name);
       toast({
-        title: "Account created!",
+        title: "Account created successfully!",
         description: "Welcome to ChatBot Builder. Let's get you started.",
       });
       navigate('/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Registration failed",
-        description: "Please check your information and try again.",
+        description: error.message || "Please check your information and try again.",
         variant: "destructive",
       });
     } finally {

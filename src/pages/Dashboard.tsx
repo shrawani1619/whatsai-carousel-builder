@@ -1,12 +1,12 @@
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Bot, MessageSquare, Zap, TrendingUp, Plus } from 'lucide-react';
+import { Bot, MessageSquare, TrendingUp, Plus } from 'lucide-react';
 
 export default function Dashboard() {
-  const { user } = useAuth();
   const navigate = useNavigate();
+  const isLoading = false; // No loading state needed for static data
 
   const stats = [
     {
@@ -22,20 +22,6 @@ export default function Dashboard() {
       description: 'This month',
       icon: <MessageSquare className="h-6 w-6 text-success" />,
       trend: '+15% from last month'
-    },
-    {
-      title: 'Response Rate',
-      value: '94%',
-      description: 'Average response rate',
-      icon: <TrendingUp className="h-6 w-6 text-warning" />,
-      trend: '+5% improvement'
-    },
-    {
-      title: 'Auto Responses',
-      value: '856',
-      description: 'Automated this month',
-      icon: <Zap className="h-6 w-6 text-primary" />,
-      trend: '68% automation rate'
     }
   ];
 
@@ -63,37 +49,26 @@ export default function Dashboard() {
     }
   ];
 
+
+
+  const projects = recentBots; // Using recentBots as projects for now
+
   return (
     <div className="space-y-8 animate-fade-in">
       {/* Welcome Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">
-            Welcome back, {user?.name?.split(' ')[0]}!
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            Here's what's happening with your chatbots today.
-          </p>
-        </div>
-        <Button 
-          variant="gradient" 
-          size="lg"
-          onClick={() => navigate('/dashboard/bots/create')}
-          className="mt-4 sm:mt-0"
-        >
-          <Plus className="mr-2 h-4 w-4" />
-          Create New Bot
-        </Button>
+      <div className="space-y-2">
+        <h1 className="text-3xl font-bold text-foreground">
+          Your Bots
+        </h1>
+        <p className="text-muted-foreground">
+          {projects.length} active bots
+        </p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid gap-4 grid-cols-2">
         {stats.map((stat, index) => (
-          <Card 
-            key={index} 
-            className="hover:shadow-custom-lg transition-all duration-200 animate-scale-in"
-            style={{ animationDelay: `${index * 0.1}s` }}
-          >
+          <Card key={index}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 {stat.title}
@@ -113,10 +88,12 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Recent Activity */}
+
+
+      {/* Combined Row for Recent Bots and Quick Actions */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Bots */}
-        <Card>
+        <Card className="lg:col-span-1">
           <CardHeader>
             <CardTitle>Recent Bots</CardTitle>
             <CardDescription>
@@ -199,31 +176,8 @@ export default function Dashboard() {
               View Documentation
             </Button>
           </CardContent>
-        </Card>
+          </Card>
+        </div>
       </div>
-
-      {/* Getting Started Section */}
-      <Card className="bg-gradient-secondary border-none">
-        <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row items-center justify-between">
-            <div className="mb-4 md:mb-0">
-              <h3 className="text-lg font-semibold text-card-foreground mb-2">
-                Ready to build your first chatbot?
-              </h3>
-              <p className="text-muted-foreground">
-                Follow our guided setup to create an AI-powered WhatsApp bot in under 5 minutes.
-              </p>
-            </div>
-            <Button 
-              variant="gradient" 
-              size="lg"
-              onClick={() => navigate('/dashboard/bots/create')}
-            >
-              Get Started
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
   );
 }

@@ -1,5 +1,19 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect, useCallback } from 'react';
+import { saveModelConfig, uploadPdfs } from '@/utils/api';
+import { getAccessToken } from '@/utils/auth';
+import { useNavigate, useParams } from 'react-router-dom';
+import { getApiUrl } from '@/config';
+
+// Generate a random token string
+const generateRandomToken = (length = 32): string => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  const charsLength = chars.length;
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * charsLength));
+  }
+  return result;
+};
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -8,6 +22,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from '@/components/ui/carousel';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { 
   ArrowLeft, 
   ArrowRight, 
@@ -17,9 +34,17 @@ import {
   Clock, 
   CheckCircle,
   Sparkles,
-  Upload
+  Upload,
+  UploadCloud,
+  Settings,
+  Zap,
+  X,
+  ExternalLink
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { useForm } from 'react-hook-form';
+// import { generateRandomToken } from '@/utils/tokenUtils';
 
 interface BotFormData {
   projectName: string;
@@ -31,9 +56,11 @@ interface BotFormData {
   aiModel: string;
   aiApiKey: string;
   uploadedFiles: File[];
-  useCases: string[];
-  workingHoursStart: string;
-  workingHoursEnd: string;
+  // WhatsApp Integration fields
+  whatsappApiKey: string;
+  whatsappNumberId: string;
+  whatsappNumber: string;
+  extraFeaturesEnabled: boolean;
 }
 
 const initialFormData: BotFormData = {
@@ -45,10 +72,12 @@ const initialFormData: BotFormData = {
   aiProvider: '',
   aiModel: '',
   aiApiKey: '',
-  uploadedFiles: [],
-  useCases: [],
-  workingHoursStart: '09:00',
-  workingHoursEnd: '17:00'
+  uploadedFiles: [],  
+  // Initialize new fields
+  whatsappApiKey: '',
+  whatsappNumberId: '',
+  whatsappNumber: '',
+  extraFeaturesEnabled: false
 };
 
 const steps = [
@@ -56,9 +85,8 @@ const steps = [
   { id: 2, title: 'WhatsApp Setup', description: 'Configure API credentials' },
   { id: 3, title: 'AI Provider', description: 'Choose your AI engine' },
   { id: 4, title: 'Upload Data', description: 'Upload your training data' },
-  { id: 5, title: 'Use Cases', description: 'Define bot purpose' },
-  { id: 6, title: 'Working Hours', description: 'Set availability' },
-  { id: 7, title: 'Review & Launch', description: 'Finalize your bot' }
+  { id: 5, title: 'Extra Features', description: 'Configure additional features' },
+  { id: 6, title: 'Review & Launch', description: 'Finalize your bot' }
 ];
 
 const templates = [
@@ -98,83 +126,537 @@ const useCaseOptions = [
 ];
 
 export default function CreateBot() {
-  const [currentStep, setCurrentStep] = useState(1);
+  // State for form data and UI
   const [formData, setFormData] = useState<BotFormData>(initialFormData);
+  const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [currentCarousel, setCurrentCarousel] = useState(0);
+  const [showWebhookPopup, setShowWebhookPopup] = useState(false);
+  const [webhookUrl, setWebhookUrl] = useState('https://api.yourdomain.com/webhook');
+  const [verifyToken, setVerifyToken] = useState('');
+  const [providers, setProviders] = useState<string[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(false);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [modelToDelete, setModelToDelete] = useState<string | null>(null);
+  
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  const progress = (currentStep / steps.length) * 100;
-
+  const { user, getAccessToken } = useAuth();
+  
+  // Function to update form data
   const updateFormData = (field: keyof BotFormData, value: any) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
-
-  const handleUseCaseChange = (caseId: string, checked: boolean) => {
     setFormData(prev => ({
       ...prev,
-      useCases: checked 
-        ? [...prev.useCases, caseId]
-        : prev.useCases.filter(id => id !== caseId)
+      [field]: value
     }));
   };
+  
+  // Get botId from URL params and determine if we're in edit mode
+  const { id: botId } = useParams<{ id?: string }>();
+  const isEditMode = Boolean(botId);
+  
+  // Generate a random token when the component mounts
+  useEffect(() => {
+    setVerifyToken(generateRandomToken());
+  }, []);
+  // Model type definition
+  interface Model {
+    id: string;
+    name: string;
+    provider?: string;
+  }
+  
+  // State for models
+  const [models, setModels] = useState<Record<string, Model[]>>({});
 
-  const canProceedToNext = () => {
-    switch (currentStep) {
-      case 1:
-        return formData.projectName.trim() !== '' && formData.projectDescription.trim() !== '';
-      case 2:
-        return formData.whatsappAccessToken && formData.phoneNumberId && formData.phoneNumber;
-      case 3:
-        return formData.aiProvider !== '' && formData.aiModel !== '' && formData.aiApiKey !== '';
-      case 4:
-        return formData.uploadedFiles.length > 0;
-      case 5:
-        return formData.useCases.length > 0;
-      case 6:
-        return true; // Working hours have defaults
-      default:
-        return true;
-    }
-  };
-
-  const handleNext = () => {
-    if (currentStep < steps.length) {
-      setCurrentStep(prev => prev + 1);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentStep > 1) {
-      setCurrentStep(prev => prev - 1);
-    }
-  };
-
-  const handleSubmit = async () => {
-    setLoading(true);
+  // Fetch model configuration for a bot
+  const fetchModelConfiguration = useCallback(async (botId: string) => {
     try {
-      // Mock API call - replace with actual submission
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const token = await getAccessToken();
+      if (!token) {
+        console.log('No authentication token available');
+        return null;
+      }
+
+      const response = await fetch(getApiUrl(`model-config/${botId}`), {
+        method: 'GET',
+        headers: {
+          'accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.log(`No configuration found for bot ${botId}`);
+          return null;
+        }
+        const errorData = await response.json().catch(() => ({}));
+        console.warn('Failed to fetch model configuration:', {
+          status: response.status,
+          error: errorData.detail || 'Unknown error'
+        });
+        return null;
+      }
+
+      const config = await response.json();
+      console.log('Fetched model configuration:', config);
+      return config;
+    } catch (error) {
+      console.error('Error fetching model configuration:', error);
+      return null;
+    }
+  }, [getAccessToken]);
+
+  // Load model configuration when in edit mode
+  useEffect(() => {
+    const loadModelConfig = async () => {
+      if (isEditMode && botId) {
+        const config = await fetchModelConfiguration(botId);
+        if (config) {
+          setFormData(prev => ({
+            ...prev,
+            aiProvider: config.provider || config.model_name || '',
+            aiModel: config.model || config.sub_model_name || '',
+            aiApiKey: config.api_key || ''
+          }));
+        }
+      }
+    };
+
+    if (isEditMode) {
+      loadModelConfig();
+    }
+  }, [isEditMode, botId, fetchModelConfiguration]);
+
+  const fetchProviders = useCallback(async () => {
+    try {
+      console.log('Fetching providers from API...');
       
-      toast({
-        title: "Bot created successfully!",
-        description: "Your chatbot is now being deployed. This may take a few minutes.",
+      // Make the request exactly like the curl command
+      const response = await fetch(getApiUrl('model-config/models'), {
+        method: 'GET',
+        headers: {
+          'accept': 'application/json',
+        },
       });
       
-      navigate('/dashboard/bots');
+      console.log('API Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API Error Response:', errorText);
+        throw new Error(`Failed to fetch models: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('API Response data:', data);
+      
+      if (!Array.isArray(data)) {
+        console.error('Expected array but got:', typeof data, data);
+        throw new Error('Invalid response format: expected an array');
+      }
+      
+      if (data.length === 0) {
+        console.warn('No providers found in the API response');
+        setProviders([]);
+        return [];
+      }
+      
+      // Check if the response is an array of strings (provider names)
+      if (typeof data[0] === 'string') {
+        console.log('Received array of provider names:', data);
+        setProviders(data);
+        return data;
+      }
+      
+      // If we get here, it's an array of objects
+      console.log('First model structure:', JSON.stringify(data[0], null, 2));
+      
+      // Extract unique providers from array of objects
+      const uniqueProviders = Array.from(
+        new Set(
+          data.map(model => 
+            model.provider || model.model_provider || model.ai_provider || 
+            (model.id ? model.id.split('/')[0] : null) || 'unknown'
+          )
+        )
+      ).filter(Boolean).filter(p => p !== 'unknown');
+      
+      setProviders(uniqueProviders);
+      return uniqueProviders;
     } catch (error) {
+      setProviders([]);
+      console.error('Error fetching AI providers:', error);
       toast({
-        title: "Failed to create bot",
-        description: "Please try again or contact support if the problem persists.",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to load AI providers. Please try again later.',
+        variant: 'destructive',
+      });
+      return [];
+    }
+  }, [getAccessToken, toast]);
+
+  const fetchModels = useCallback(async (provider: string) => {
+    if (!provider) return;
+    
+    setModelsLoading(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      // Use the new submodels endpoint
+      const response = await fetch(getApiUrl(`model-config/submodels/${provider}`), {
+        method: 'GET',
+        headers: {
+          'accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Submodels fetch error:', errorText);
+        throw new Error(`Failed to fetch submodels: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      console.log('Raw submodels API response for', provider, ':', JSON.stringify(data, null, 2));
+      
+      if (!Array.isArray(data)) {
+        throw new Error('Invalid response format: expected an array of models');
+      }
+      
+      // Transform the response to ensure it has the expected structure
+      const modelData = data.map((model: any, index: number) => {
+        // If model is a string, use it as both id and name
+        if (typeof model === 'string') {
+          return {
+            id: model,  // Use the full model name as id
+            name: model, // Use the full model name as display name
+            provider: provider
+          };
+        }
+        
+        // Log each model's structure for debugging (for non-string models)
+        console.log(`Model ${index + 1} structure:`, JSON.stringify(model, null, 2));
+        
+        // Fallback for object structure if needed
+        const modelName = model.name || model.model_name || model.display_name || 
+                         model.id || model.model_id || `model-${index + 1}`;
+        
+        return {
+          id: model.id || model.model_id || `model-${index + 1}`,
+          name: modelName,
+          provider: provider
+        };
+      });
+      
+      console.log('Processed model data:', JSON.stringify(modelData, null, 2));
+      
+      setModels(prev => ({
+        ...prev,
+        [provider]: modelData
+      }));
+      
+      return modelData;
+    } catch (error) {
+      console.error('Error fetching models:', error);
+      toast({
+        title: 'Error',
+        description: `Failed to fetch models for ${provider}. Please try again later.`,
+        variant: 'destructive',
+      });
+      return [];
+    } finally {
+      setModelsLoading(false);
+    }
+  }, [getAccessToken, toast]);
+
+  const deleteModelConfig = async (modelId: string) => {
+    if (!modelId) return;
+    
+    if (!window.confirm('Are you sure you want to delete this model configuration? This action cannot be undone.')) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        throw new Error('Authentication required. Please log in again.');
+      }
+
+      const response = await fetch(getApiUrl(`model-config/${modelId}`), {
+        method: 'DELETE',
+        headers: {
+          'accept': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        let errorMessage = `Failed to delete model configuration (${response.status})`;
+        
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (response.status === 401) {
+          errorMessage = 'Authentication failed. Please log in again.';
+        } else if (response.status === 404) {
+          errorMessage = 'Model configuration not found. It may have already been deleted.';
+        } else if (response.status === 403) {
+          errorMessage = 'You do not have permission to delete this model configuration.';
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      // Refresh the models list after successful deletion
+      if (formData.aiProvider) {
+        const updatedModels = { ...models };
+        if (updatedModels[formData.aiProvider]) {
+          updatedModels[formData.aiProvider] = updatedModels[formData.aiProvider]
+            .filter(model => model.id !== modelId);
+          setModels(updatedModels);
+        }
+      }
+
+      toast({
+        title: 'Success',
+        description: 'Model configuration has been deleted successfully.',
+        variant: 'default',
+      });
+
+    } catch (error: any) {
+      console.error('Failed to delete model configuration:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete model configuration. Please try again later.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+      setModelToDelete(null);
+    }
+  };
+
+  // We'll fetch providers when the dropdown is opened instead of on mount
+
+  // Fetch models when provider changes
+  useEffect(() => {
+    if (formData.aiProvider) {
+      fetchModels(formData.aiProvider);
+    }
+  }, [formData.aiProvider, fetchModels]);
+
+  // Fetch existing bot data if in edit mode
+  useEffect(() => {
+    const fetchBotData = async () => {
+      if (!isEditMode || !botId) return;
+      
+      const token = getAccessToken();
+      if (!token) {
+        toast({
+          title: 'Authentication Error',
+          description: 'You need to be logged in to edit a bot.',
+          variant: 'destructive',
+        });
+        navigate('/login');
+        return;
+      }
+      
+      setLoading(true);
+      try {
+        const response = await fetch(getApiUrl(`bot/${botId}`), {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch bot data');
+        }
+        
+        const botData = await response.json();
+        // Update form data with fetched bot data
+        setFormData({
+          ...formData,
+          projectName: botData.project_name || '',
+          projectDescription: botData.description || '',
+          // Add other fields from botData as needed
+        });
+      } catch (error) {
+        console.error('Error fetching bot data:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load bot data',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchBotData();
+  }, [isEditMode, botId, navigate]);
+      
+  // Form submission handler
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user) {
+      toast({
+        title: 'Authentication Error',
+        description: 'You need to be logged in to create or update a bot.',
+        variant: 'destructive',
+      });
+      navigate('/login');
+      return;
+    }
+
+    try {
+      const baseUrl = getApiUrl('bot');
+      const url = isEditMode ? `${baseUrl}/${botId}` : `${baseUrl}/`;
+      const method = isEditMode ? 'PUT' : 'POST';
+      
+      const requestBody = isEditMode ? {
+        project_name: formData.projectName,
+        description: formData.projectDescription || 'No description provided.'
+      } : {
+        project_name: formData.projectName,
+        user_id: user.id,
+        description: formData.projectDescription || 'No description provided.'
+      };
+      
+      console.log('Sending request to:', url);
+      console.log('Request method:', method);
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${getAccessToken()}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) {
+        let userMessage = 'An error occurred while saving the bot configuration.';
+        const errorData = await response.json().catch(() => ({}));
+        const errorDetail = errorData.detail || '';
+
+        if (errorDetail.includes('user_id') && errorDetail.includes('not found')) {
+          userMessage = 'Invalid user ID. Please log in again.';
+        } else if (errorDetail.includes('not found') || errorDetail.includes('404')) {
+          userMessage = 'Bot not found. It may have been deleted.';
+        }
+        
+        throw new Error(userMessage);
+      }
+      
+      const data = await response.json();
+      
+      // Upload PDFs if any files are selected
+      if (formData.uploadedFiles.length > 0) {
+        try {
+          const uploadResponse = await uploadPdfs(
+            formData.projectName,
+            formData.uploadedFiles,
+            getAccessToken
+          );
+          
+          console.log('PDFs uploaded successfully:', uploadResponse);
+          
+          toast({
+            title: 'Files uploaded',
+            description: 'Your PDF files have been uploaded successfully.',
+            variant: 'default',
+          });
+        } catch (error: any) {
+          console.error('Error uploading PDFs:', error);
+          toast({
+            title: 'Warning',
+            description: 'Bot was created, but there was an error uploading some files: ' + (error.message || 'Unknown error'),
+            variant: 'destructive',
+          });
+        }
+      }
+      
+      const result = await response.json();
+      // Use the botId from URL params if result.id is not available
+      const newBotId = result.id || botId;
+      
+      // Save model configuration if AI provider and model are selected
+      if (formData.aiProvider && formData.aiModel && formData.aiApiKey) {
+        try {
+          const getToken = (): string | null => {
+            // Directly access storage instead of using the async getAccessToken
+            return localStorage.getItem('access_token') || sessionStorage.getItem('access_token');
+          };
+          
+          await saveModelConfig(
+            {
+              model_name: formData.aiProvider,
+              sub_model_name: formData.aiModel,
+              api_key: formData.aiApiKey
+            },
+            newBotId,
+            getToken
+          );
+          console.log('Model configuration saved successfully');
+        } catch (error) {
+          console.error('Error saving model configuration, but bot was created/updated:', error);
+          // Continue even if model config fails, as the bot was created successfully
+          toast({
+            title: 'Bot saved with warning',
+            description: 'Bot was created/updated, but there was an issue saving the model configuration. You can update it later in the bot settings.',
+            variant: 'destructive',
+          });
+          setShowWebhookPopup(true);
+          return;
+        }
+      }
+      
+      // Show the webhook configuration popup
+      setShowWebhookPopup(true);
+      // Navigate to bots list after showing the webhook popup
+      setTimeout(() => {
+        navigate('/dashboard/bots');
+      }, 2000);
+    } catch (error: any) {
+      toast({
+        title: isEditMode ? 'Failed to update bot' : 'Failed to create bot',
+        description: error.message || 'An unexpected error occurred. Please try again.',
+        variant: 'destructive',
       });
     } finally {
       setLoading(false);
     }
+    }
   };
 
-  const renderStepContent = () => {
-    switch (currentStep) {
+  // Render the appropriate step content based on the current step
+  const renderStepContent = (
+    step: number, 
+    formData: BotFormData, 
+    updateFormData: (field: keyof BotFormData, value: any) => void,
+    providers: string[],
+    providersLoading: boolean,
+    toast: any,
+    models: Record<string, any>,
+    modelsLoading: boolean,
+    currentCarousel: number,
+    setCurrentCarousel: (value: number) => void,
+    fetchProviders: () => Promise<void>,
+    fetchModels: (provider: string) => Promise<void>
+  ) => {
+    switch (step) {
       case 1:
         return (
           <div className="space-y-4">
@@ -255,47 +737,171 @@ export default function CreateBot() {
               <Brain className="h-12 w-12 text-primary mx-auto mb-4" />
               <h2 className="text-2xl font-bold text-foreground">AI Provider</h2>
               <p className="text-muted-foreground">Configure your AI engine</p>
+              {modelsLoading && (
+                <div className="mt-2 text-sm text-muted-foreground">
+                  Loading available models...
+                </div>
+              )}
             </div>
-            <div className="space-y-4">
+            <div className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="aiProvider">AI Provider</Label>
-                <Select onValueChange={(value) => updateFormData('aiProvider', value)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select AI provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="openai">OpenAI</SelectItem>
-                    <SelectItem value="gemini">Google Gemini</SelectItem>
-                    <SelectItem value="anthropic">Anthropic</SelectItem>
-                    <SelectItem value="custom">Custom API</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="aiProvider">AI Provider</Label>
+                  {providers.length > 0 && formData.aiProvider && (
+                    <Button 
+                      type="button"
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => {
+                        updateFormData('aiProvider', '');
+                        updateFormData('aiModel', '');
+                      }}
+                      className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Clear selection
+                    </Button>
+                  )}
+                </div>
+                <div className="relative">
+                  <Select 
+                    value={formData.aiProvider || ''}
+                    disabled={providersLoading}
+                    onOpenChange={async (open) => {
+                      if (open && providers.length === 0) {
+                        try {
+                          await fetchProviders();
+                        } catch (error) {
+                          toast({
+                            title: 'Error loading providers',
+                            description: 'Failed to load AI providers. Please try again.',
+                            variant: 'destructive',
+                          });
+                        }
+                      }
+                    }}
+                    onValueChange={(value) => {
+                      if (value === 'clear') {
+                        updateFormData('aiProvider', '');
+                        updateFormData('aiModel', '');
+                        return;
+                      }
+                      if (value) {
+                        updateFormData('aiProvider', value);
+                        updateFormData('aiModel', '');
+                        fetchModels(value).catch(error => {
+                          toast({
+                            title: 'Error loading models',
+                            description: `Failed to load models for ${value}. Please try again.`,
+                            variant: 'destructive',
+                          });
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={
+                        providersLoading ? 'Loading providers...' : 'Select AI provider'
+                      }> 
+                        {formData.aiProvider && (
+                          <span className="capitalize">
+                            {formData.aiProvider.replace(/-/g, ' ')}
+                          </span>
+                        )}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providers.length > 0 ? (
+                        providers
+                          .filter(provider => provider && provider.trim() !== '')
+                          .map((provider) => (
+                            <SelectItem 
+                              key={provider} 
+                              value={provider}
+                              className="capitalize"
+                            >
+                              {provider.replace(/-/g, ' ')}
+                            </SelectItem>
+                          ))
+                      ) : (
+                        <SelectItem 
+                          value="no-providers" 
+                          disabled
+                        >
+                          {modelsLoading ? 'Loading providers...' : 'No providers available'}
+                        </SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {formData.aiProvider && (
+                    <button
+                      type="button"
+                      className="absolute right-8 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        updateFormData('aiProvider', '');
+                        updateFormData('aiModel', '');
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
               {formData.aiProvider && (
                 <div className="space-y-2">
                   <Label htmlFor="aiModel">AI Model</Label>
-                  <Select onValueChange={(value) => updateFormData('aiModel', value)}>
+                  <Select 
+                    value={formData.aiModel || undefined}
+                    onValueChange={(value) => {
+                      // Only update if we have a valid model ID
+                      if (value && !["select-provider-first", "loading-models", "no-models-available"].includes(value)) {
+                        updateFormData('aiModel', value);
+                      }
+                    }}
+                    disabled={!formData.aiProvider || modelsLoading}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select AI model" />
+                      <SelectValue 
+                        placeholder={
+                          !formData.aiProvider ? 'Select a provider first' :
+                          modelsLoading ? 'Loading models...' : 
+                          'Select AI model'
+                        } 
+                      />
                     </SelectTrigger>
                     <SelectContent>
-                      {formData.aiProvider === 'openai' && (
-                        <>
-                          <SelectItem value="gpt-4">GPT-4</SelectItem>
-                          <SelectItem value="gpt-3.5-turbo">GPT-3.5 Turbo</SelectItem>
-                        </>
-                      )}
-                      {formData.aiProvider === 'gemini' && (
-                        <>
-                          <SelectItem value="gemini-pro">Gemini Pro</SelectItem>
-                          <SelectItem value="gemini-pro-vision">Gemini Pro Vision</SelectItem>
-                        </>
-                      )}
-                      {formData.aiProvider === 'anthropic' && (
-                        <>
-                          <SelectItem value="claude-3-opus">Claude 3 Opus</SelectItem>
-                          <SelectItem value="claude-3-sonnet">Claude 3 Sonnet</SelectItem>
-                        </>
+                      {!formData.aiProvider ? (
+                        <SelectItem 
+                          value="select-provider-first" 
+                          disabled
+                        >
+                          Please select a provider first
+                        </SelectItem>
+                      ) : modelsLoading ? (
+                        <SelectItem 
+                          value="loading-models" 
+                          disabled
+                        >
+                          Loading models...
+                        </SelectItem>
+                      ) : (models[formData.aiProvider]?.filter(m => m?.id)?.length || 0) > 0 ? (
+                        models[formData.aiProvider]
+                          .filter(model => model?.id) // Ensure model has an ID
+                          .map((model) => (
+                          <SelectItem 
+                            key={model.id} 
+                            value={model.id}
+                          >
+                            {model.name || 'Unnamed Model'}
+                          </SelectItem>
+                        ))
+                      ) : (
+                        <SelectItem 
+                          value="no-models-available" 
+                          disabled
+                        >
+                          No models available for this provider
+                        </SelectItem>
                       )}
                     </SelectContent>
                   </Select>
@@ -380,61 +986,27 @@ export default function CreateBot() {
 
       case 5:
         return (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="text-center mb-6">
-              <Sparkles className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-foreground">Use Cases</h2>
-              <p className="text-muted-foreground">What will your bot be used for?</p>
+              <Zap className="h-12 w-12 text-primary mx-auto mb-4" />
+              <h2 className="text-2xl font-bold text-foreground">Extra Features</h2>
+              <p className="text-muted-foreground">Enable additional functionality</p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {useCaseOptions.map((option) => (
-                <div key={option.id} className="flex items-center space-x-2 p-3 border rounded-lg hover:bg-muted/50">
-                  <Checkbox
-                    id={option.id}
-                    checked={formData.useCases.includes(option.id)}
-                    onCheckedChange={(checked) => handleUseCaseChange(option.id, checked as boolean)}
-                  />
-                  <Label htmlFor={option.id} className="cursor-pointer">
-                    {option.label}
-                  </Label>
-                </div>
-              ))}
+          <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <Label className="text-base font-medium">Allow Button</Label>
+              </div>
+                <Switch
+                  checked={formData.extraFeaturesEnabled}
+                  onCheckedChange={(checked) => updateFormData('extraFeaturesEnabled', checked)}
+                />
+              </div>
             </div>
           </div>
         );
 
       case 6:
-        return (
-          <div className="space-y-4">
-            <div className="text-center mb-6">
-              <Clock className="h-12 w-12 text-primary mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-foreground">Working Hours</h2>
-              <p className="text-muted-foreground">When should your bot be active?</p>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="startTime">Start Time</Label>
-                <Input
-                  id="startTime"
-                  type="time"
-                  value={formData.workingHoursStart}
-                  onChange={(e) => updateFormData('workingHoursStart', e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="endTime">End Time</Label>
-                <Input
-                  id="endTime"
-                  type="time"
-                  value={formData.workingHoursEnd}
-                  onChange={(e) => updateFormData('workingHoursEnd', e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-        );
-
-      case 7:
         return (
           <div className="space-y-6">
             <div className="text-center mb-6">
@@ -442,38 +1014,34 @@ export default function CreateBot() {
               <h2 className="text-2xl font-bold text-foreground">Review & Launch</h2>
               <p className="text-muted-foreground">Review your configuration and launch your bot</p>
             </div>
-            <div className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Bot Configuration Summary</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <strong>Project Name:</strong> {formData.projectName}
-                    </div>
-                    <div>
-                      <strong>AI Provider:</strong> {formData.aiProvider} ({formData.aiModel})
-                    </div>
-                    <div>
-                      <strong>Phone Number:</strong> {formData.phoneNumber}
-                    </div>
-                    <div>
-                      <strong>Working Hours:</strong> {formData.workingHoursStart} - {formData.workingHoursEnd}
-                    </div>
-                    <div className="md:col-span-2">
-                      <strong>Description:</strong> {formData.projectDescription}
-                    </div>
-                    <div className="md:col-span-2">
-                      <strong>Use Cases:</strong> {formData.useCases.join(', ')}
-                    </div>
-                    <div className="md:col-span-2">
-                      <strong>Uploaded Files:</strong> {formData.uploadedFiles.length} file(s)
-                    </div>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Configuration Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <strong>Project Name:</strong> {formData.projectName}
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                  <div>
+                    <strong>AI Provider:</strong> {formData.aiProvider} ({formData.aiModel})
+                  </div>
+                  <div>
+                    <strong>WhatsApp Access Token:</strong> {formData.whatsappAccessToken ? 'Set' : 'Not set'}
+                  </div>
+                  <div>
+                    <strong>Phone Number ID:</strong> {formData.phoneNumberId}
+                  </div>
+                  <div>
+                    <strong>WhatsApp Phone Number:</strong> {formData.phoneNumber}
+                  </div>
+                  <div>
+                    <strong>API Key:</strong> {formData.aiApiKey ? 'Set' : 'Not set'}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         );
 
@@ -482,20 +1050,25 @@ export default function CreateBot() {
     }
   };
 
+  // This is the main return statement for the CreateBot component
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/dashboard/bots')}
-          >
+    <div className="max-w-6xl mx-auto p-4 animate-fade-in">
+      {/* Main Content */}
+      <div className="flex-1 space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <Button
+              variant="ghost"
+              onClick={() => navigate('/dashboard/bots')}
+            >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Bots
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Create New Chatbot</h1>
+            <h1 className="text-2xl font-bold text-foreground">
+              {isEditMode ? 'Edit Chatbot' : 'Create New Chatbot'}
+            </h1>
             <p className="text-muted-foreground">Step {currentStep} of {steps.length}</p>
           </div>
         </div>
@@ -514,7 +1087,20 @@ export default function CreateBot() {
       <Card className="min-h-[500px]">
         <CardContent className="p-8">
           <div className="animate-slide-in-right">
-            {renderStepContent()}
+            {renderStepContent(
+              currentStep, 
+              formData, 
+              updateFormData,
+              providers,
+              providersLoading,
+              toast,
+              models,
+              modelsLoading,
+              currentCarousel,
+              setCurrentCarousel,
+              fetchProviders,
+              fetchModels  // Add fetchModels here
+            )}
           </div>
         </CardContent>
       </Card>
@@ -536,7 +1122,7 @@ export default function CreateBot() {
             onClick={handleSubmit}
             disabled={loading}
           >
-            {loading ? 'Creating Bot...' : 'Launch Bot'}
+            {loading ? (isEditMode ? 'Updating Bot...' : 'Creating Bot...') : (isEditMode ? 'Update Bot' : 'Launch Bot')}
           </Button>
         ) : (
           <Button
@@ -544,11 +1130,100 @@ export default function CreateBot() {
             onClick={handleNext}
             disabled={!canProceedToNext()}
           >
-            Next
-            <ArrowRight className="h-4 w-4 ml-2" />
+            {currentStep === steps.length ? 'Finish' : 'Next'}
+            <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         )}
       </div>
     </div>
+
+      {/* Webhook Configuration Dialog */}
+      <Dialog open={showWebhookPopup} onOpenChange={setShowWebhookPopup}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <ExternalLink className="h-5 w-5 text-blue-500" />
+              <span>Webhook Configuration</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="webhookUrl">Webhook URL</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(webhookUrl);
+                      toast({
+                        title: 'Copied!',
+                        description: 'Webhook URL copied to clipboard',
+                      });
+                    }}
+                  >
+                    Copy URL
+                  </Button>
+                </div>
+                <Input
+                  id="webhookUrl"
+                  value={webhookUrl}
+                  readOnly
+                  className="font-mono text-sm"
+                />
+                <p className="text-sm text-muted-foreground">
+                  Set this as your webhook URL in the WhatsApp Business API settings
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <Label htmlFor="verifyToken">Verify Token</Label>
+                <div className="flex items-center space-x-2">
+                  <Input
+                    id="verifyToken"
+                    value={verifyToken}
+                    readOnly
+                    className="font-mono text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(verifyToken);
+                      toast({
+                        title: "Copied!",
+                        description: "Verify token copied to clipboard",
+                      });
+                    }}
+                  >
+                    Copy
+                  </Button>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Use this token when verifying your webhook in WhatsApp Business API
+                </p>
+              </div>
+            </div>
+            
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 p-4 rounded-md">
+              <h4 className="font-medium text-yellow-800 dark:text-yellow-200 mb-2">Important Instructions</h4>
+              <ol className="text-sm text-yellow-700 dark:text-yellow-300 space-y-2 list-decimal list-inside">
+                <li>Go to WhatsApp Business API settings</li>
+                <li>Set the webhook URL to: <code className="bg-yellow-100 dark:bg-yellow-800 px-1 rounded">{webhookUrl}</code></li>
+                <li>Set the verify token to: <code className="bg-yellow-100 dark:bg-yellow-800 px-1 rounded">{verifyToken}</code></li>
+                <li>Save the configuration</li>
+              </ol>
+            </div>
+            
+            <div className="flex justify-end pt-2">
+              <Button onClick={handleWebhookSubmit}>
+                Done, I've configured the webhook
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
-}
